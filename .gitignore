@@ -104,3 +104,8 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Local model credentials and prompts
+/.env
+/FloorPlanTo3D/.env
+/FloorPlanTo3D/Assets/StreamingAssets/.env
