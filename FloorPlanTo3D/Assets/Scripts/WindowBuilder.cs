@@ -30,19 +30,35 @@ public class WindowBuilder : MonoBehaviour
     public float bottomPanelHeight = 0.8f;  // tall windows also get a bottom row
 
     // Living room window is near full height. Bedroom windows are about 3/4 height.
-    public WindowData[] windows =
+    public WindowData[] windows = DefaultWindows();
+
+    // The built-in list. Unity keeps the list saved in your scene, so after a script
+    // update use "Reset Windows To Defaults" from the component's menu to pick up new values.
+    static WindowData[] DefaultWindows() => new WindowData[]
     {
         new WindowData { name = "Living and study window", wallId = "T2",
-            start = new Vector2(0.62f, 9.325f), end = new Vector2(5.22f, 9.325f), sill = 0.15f, head = 2.3f },
+            start = new Vector2(0.62f, 9.325f), end = new Vector2(4.805f, 9.325f), sill = 0.15f, head = 2.3f },
         new WindowData { name = "Bedroom 3 window", wallId = "T4",
             start = new Vector2(6.48f, 9.325f), end = new Vector2(8.475f, 9.325f), sill = 0.6f, head = 2.1f },
         new WindowData { name = "Bedroom 2 window", wallId = "T4",
             start = new Vector2(8.575f, 9.325f), end = new Vector2(10.68f, 9.325f), sill = 0.6f, head = 2.1f },
         new WindowData { name = "Main bedroom window", wallId = "T6",
-            start = new Vector2(11.93f, 9.325f), end = new Vector2(14.475f, 9.325f), sill = 0.6f, head = 2.1f },
+            start = new Vector2(11.93f, 9.325f), end = new Vector2(14.17f, 9.325f), sill = 0.6f, head = 2.1f },
         new WindowData { name = "Main bedroom side window", wallId = "R2",
             start = new Vector2(14.625f, 8.175f), end = new Vector2(14.625f, 5.815f), sill = 0.6f, head = 2.1f },
     };
+
+    [ContextMenu("Reset Windows To Defaults")]
+    void ResetToDefaults()
+    {
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(this, "Reset Windows To Defaults");
+#endif
+        windows = DefaultWindows();
+        // Rebuild the whole house so wall openings, paint and ceilings all match
+        var plan = GetComponent<FloorPlanBuilder>();
+        if (plan != null) plan.Build(); else Build();
+    }
 
     // Used by FloorPlanBuilder to size the wall opening for a window wall
     public void GetOpeningHeights(string wallId, ref float sill, ref float head)

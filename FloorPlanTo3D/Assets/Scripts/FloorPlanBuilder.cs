@@ -29,11 +29,13 @@ public class FloorPlanBuilder : MonoBehaviour
     static readonly W[] walls =
     {
         new W("T1", "Top facade beam (study)", 0.05f, 9.425f, 1.14f, 0.3f, 0f, "beam"),
-        new W("T2", "Top facade window (study/living)", 2.92f, 9.325f, 4.6f, 0.1f, 0f, "window"),
+        new W("T2", "Top facade window (study/living)", 2.712f, 9.325f, 4.185f, 0.1f, 0f, "window"),
+        new W("T2R", "Top facade pier (right of living window)", 5.012f, 9.425f, 0.415f, 0.3f, 0f, "beam"),
         new W("T3", "Top facade beam (bedroom 3)", 5.85f, 9.425f, 1.26f, 0.3f, 0f, "beam"),
         new W("T4", "Top facade window (bedroom 3/2)", 8.58f, 9.325f, 4.2f, 0.1f, 0f, "window"),
         new W("T5", "Top facade beam (bedroom 2/main)", 11.305f, 9.425f, 1.25f, 0.3f, 0f, "beam"),
-        new W("T6", "Top facade window (main bedroom)", 13.203f, 9.325f, 2.545f, 0.1f, 0f, "window"),
+        new W("T6", "Top facade window (main bedroom)", 13.05f, 9.325f, 2.24f, 0.1f, 0f, "window"),
+        new W("T6R", "Top facade pier (right of main bedroom window)", 14.322f, 9.425f, 0.305f, 0.3f, 0f, "beam"),
         new W("R1", "Right wall upper", 14.625f, 8.875f, 1.4f, 0.3f, 90f, "beam"),
         new W("R2", "Right wall window (main bedroom)", 14.625f, 6.995f, 2.36f, 0.1f, 90f, "window"),
         new W("R3", "Right wall lower", 14.625f, 5.178f, 1.275f, 0.3f, 90f, "beam"),
@@ -112,6 +114,8 @@ public class FloorPlanBuilder : MonoBehaviour
         var doors = GetComponent<DoorBuilder>();
         if (doors != null) doors.Build();
         foreach (var ceiling in GetComponents<LivingCeilingDesigner>()) ceiling.Rebuild();
+        var paint = GetComponent<WallDesigner>();
+        if (paint != null) paint.Rebuild();
     }
 
     // The ceiling is a one-sided plane facing down. Unity does not draw the back

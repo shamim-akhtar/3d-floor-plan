@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -12,6 +13,8 @@ public class DesignMenu : MonoBehaviour
 
     public LivingCeilingDesigner ceiling;   // the room currently shown; found automatically
     LivingCeilingDesigner[] rooms = new LivingCeilingDesigner[0];
+    public WallDesigner walls;              // found automatically
+    int wallRoom;
     public bool startOpen = false;
 
     bool open;
@@ -37,6 +40,7 @@ public class DesignMenu : MonoBehaviour
     void Start()
     {
         FindRooms();
+        if (walls == null) walls = FindAnyObjectByType<WallDesigner>();
         white = Texture2D.whiteTexture;
         icons = new[] { Icons.Ceiling(), Icons.Lighting(), Icons.Walls(), Icons.Carpentry() };
         if (startOpen) SetOpen(true);
@@ -147,33 +151,46 @@ public class DesignMenu : MonoBehaviour
         var p = new Rect(StripW, 0, PanelW, h);
         Fill(p, Panel);
 
-        string roomLabel = ceiling != null ? ceiling.roomName.ToUpper() : "ROOM";
+        bool wallsMode = category == Category.Walls;
+        string roomLabel = wallsMode
+            ? (walls != null && walls.rooms.Count > 0 ? walls.rooms[wallRoom].roomName.ToUpper() : "ROOM")
+            : (ceiling != null ? ceiling.roomName.ToUpper() : "ROOM");
         GUI.Label(new Rect(p.x + 20, 16, PanelW - 40, 16), roomLabel, small);
-        string[] titles = { "Ceiling style", "Lighting", "Wall colours", "Carpentry" };
+        string[] titles = { "Ceiling style", "Lighting", "Walls", "Carpentry" };
         GUI.Label(new Rect(p.x + 20, 34, PanelW - 40, 28), titles[(int)category], heading);
 
-        // Room tabs
-        float top = 72;
-        if (rooms.Length > 1)
+        // Room tabs (walls have their own room list; the lobby counts as part of the main bedroom)
+        var labels = new List<string>();
+        int selectedTab;
+        if (wallsMode)
         {
-            // Up to three tabs per row
-            int cols = Mathf.Min(3, rooms.Length);
-            int rowsN = Mathf.CeilToInt(rooms.Length / (float)cols);
+            if (walls != null) foreach (var r in walls.rooms) labels.Add(ShortWallName(r.roomName));
+            selectedTab = wallRoom;
+        }
+        else
+        {
+            foreach (var r in rooms) labels.Add(r != null ? ShortName(r) : "?");
+            selectedTab = System.Array.IndexOf(rooms, ceiling);
+        }
+
+        float top = 72;
+        if (labels.Count > 1)
+        {
+            int cols = Mathf.Min(3, labels.Count);
+            int rowsN = Mathf.CeilToInt(labels.Count / (float)cols);
             float tabW = (PanelW - 40) / cols;
-            for (int i = 0; i < rooms.Length; i++)
+            for (int i = 0; i < labels.Count; i++)
             {
-                var room = rooms[i];
-                if (room == null) continue;
                 var r = new Rect(p.x + 20 + (i % cols) * tabW, top + (i / cols) * 34, tabW - 4, 30);
-                bool selected = room == ceiling;
+                bool selected = i == selectedTab;
                 bool hover = r.Contains(Event.current.mousePosition);
                 Fill(r, selected ? Accent : (hover ? CardHover : Card));
                 var st = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter, wordWrap = false, clipping = TextClipping.Clip };
                 st.normal.textColor = selected ? new Color(0.1f, 0.1f, 0.1f) : TextMain;
-                GUI.Label(r, ShortName(room), st);
+                GUI.Label(r, labels[i], st);
                 if (GUI.Button(r, GUIContent.none, GUIStyle.none) && !selected)
                 {
-                    ceiling = room;
+                    if (wallsMode) wallRoom = i; else ceiling = rooms[i];
                     scroll = Vector2.zero;
                 }
             }
@@ -183,7 +200,16 @@ public class DesignMenu : MonoBehaviour
 
         var area = new Rect(p.x, top + 10, PanelW, h - top - 10);
 
-        if (ceiling == null)
+        if (wallsMode)
+        {
+            if (walls == null)
+                GUI.Label(new Rect(area.x + 20, area.y + 10, PanelW - 40, 60),
+                    "Add Wall Designer to the FloorPlanBuilder object to use this tab.", body);
+            else DrawWalls(area);
+            return;
+        }
+
+        if (ceiling == null && category != Category.Carpentry)
         {
             GUI.Label(new Rect(area.x + 20, area.y + 10, PanelW - 40, 60),
                 "Add Living Ceiling Designer to the FloorPlanBuilder object to use this menu.", body);
@@ -199,6 +225,113 @@ public class DesignMenu : MonoBehaviour
                     "Coming soon. Options for this category will appear here.", body);
                 break;
         }
+    }
+
+    // ------------------------------------------------------------------ walls tab
+
+    void DrawWalls(Rect area)
+    {
+        var room = walls.rooms[wallRoom];
+        float x = 20, w = PanelW - 50;
+        const int perRow = 5;
+        float sw = (w - (perRow - 1) * 8) / perRow;
+        int swatchRows = Mathf.CeilToInt(WallDesigner.Swatches.Length / (float)perRow);
+        float gridH = swatchRows * (sw + 8);
+        bool hasFeature = room.feature != WallDesigner.FeatureFinish.None;
+        float contentH = 40 + gridH + 60 + 40 + WallDesigner.FinishNames.Length * 40 + (hasFeature ? 70 + 40 + gridH : 0) + 40;
+
+        scroll = GUI.BeginScrollView(area, scroll, new Rect(0, 0, PanelW - 20, contentH), false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
+        float y = 4;
+
+        // Wall colour
+        GUI.Label(new Rect(x, y, w, 20), "Wall colour", cardName);
+        var current = WallDesigner.Swatches[Mathf.Clamp(room.colourIndex, 0, WallDesigner.Swatches.Length - 1)];
+        chip.normal.textColor = TextDim;
+        GUI.Label(new Rect(x, y, w, 20), current.name, chip);
+        y += 28;
+        int picked = SwatchGrid(x, y, w, perRow, sw, room.colourIndex);
+        if (picked >= 0) walls.SetColour(wallRoom, picked);
+        y += gridH + 4;
+
+        var all = new Rect(x, y, w, 34);
+        Fill(all, all.Contains(Event.current.mousePosition) ? CardHover : Card);
+        GUI.Label(new Rect(all.x + 14, all.y + 8, w - 20, 20), "Use this colour in all rooms", body);
+        if (GUI.Button(all, GUIContent.none, GUIStyle.none)) walls.ColourAllRooms(room.colourIndex);
+        y += 52;
+
+        // Feature wall
+        GUI.Label(new Rect(x, y, w, 20), "Feature wall", cardName);
+        y += 28;
+        for (int i = 0; i < WallDesigner.FinishNames.Length; i++)
+        {
+            var r = new Rect(x, y, w, 34);
+            bool selected = (int)room.feature == i;
+            Fill(r, r.Contains(Event.current.mousePosition) && !selected ? CardHover : Card);
+            if (selected) Outline(r, Accent, 2f);
+            GUI.Label(new Rect(r.x + 14, r.y + 8, w - 20, 20), WallDesigner.FinishNames[i], body);
+            if (GUI.Button(r, GUIContent.none, GUIStyle.none) && !selected)
+                walls.SetFeature(wallRoom, (WallDesigner.FeatureFinish)i);
+            y += 40;
+        }
+
+        if (hasFeature)
+        {
+            // Which wall
+            y += 8;
+            int n = walls.CandidateCount(wallRoom);
+            var row = new Rect(x, y, w, 44);
+            Fill(row, Card);
+            string label = n == 0 ? "No suitable wall found"
+                : "Wall " + (room.featureWall % n + 1) + " of " + n + "   (" + walls.CandidateLength(wallRoom, room.featureWall % n).ToString("0.0") + " m)";
+            GUI.Label(new Rect(row.x + 14, row.y + 12, w - 110, 20), label, body);
+            var prev = new Rect(row.xMax - 88, row.y + 7, 36, 30);
+            var next = new Rect(row.xMax - 46, row.y + 7, 36, 30);
+            Fill(prev, prev.Contains(Event.current.mousePosition) ? Accent : CardHover);
+            Fill(next, next.Contains(Event.current.mousePosition) ? Accent : CardHover);
+            var arrow = new GUIStyle(cardName) { alignment = TextAnchor.MiddleCenter };
+            GUI.Label(prev, "<", arrow);
+            GUI.Label(next, ">", arrow);
+            if (GUI.Button(prev, GUIContent.none, GUIStyle.none)) walls.StepFeatureWall(wallRoom, -1);
+            if (GUI.Button(next, GUIContent.none, GUIStyle.none)) walls.StepFeatureWall(wallRoom, 1);
+            y += 62;
+
+            // Accent colour (not used by marble or timber)
+            bool usesAccent = room.feature == WallDesigner.FeatureFinish.AccentPaint
+                           || room.feature == WallDesigner.FeatureFinish.Limewash
+                           || room.feature == WallDesigner.FeatureFinish.FlutedPanel;
+            if (usesAccent)
+            {
+                GUI.Label(new Rect(x, y, w, 20), "Feature colour", cardName);
+                var acc = WallDesigner.Swatches[Mathf.Clamp(room.accentIndex, 0, WallDesigner.Swatches.Length - 1)];
+                GUI.Label(new Rect(x, y, w, 20), acc.name, chip);
+                y += 28;
+                int a = SwatchGrid(x, y, w, perRow, sw, room.accentIndex);
+                if (a >= 0) walls.SetAccent(wallRoom, a);
+            }
+        }
+        GUI.EndScrollView();
+    }
+
+    // Draws the colour swatches; returns the index clicked, or -1
+    int SwatchGrid(float x, float y, float w, int perRow, float size, int selected)
+    {
+        int clicked = -1;
+        for (int i = 0; i < WallDesigner.Swatches.Length; i++)
+        {
+            var r = new Rect(x + (i % perRow) * (size + 8), y + (i / perRow) * (size + 8), size, size);
+            bool hover = r.Contains(Event.current.mousePosition);
+            if (i == selected) Fill(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Accent);
+            else if (hover) Fill(new Rect(r.x - 2, r.y - 2, r.width + 4, r.height + 4), TextDim);
+            Fill(r, WallDesigner.Swatches[i].colour);
+            if (GUI.Button(r, new GUIContent("", WallDesigner.Swatches[i].name), GUIStyle.none) && i != selected) clicked = i;
+        }
+        return clicked;
+    }
+
+    static string ShortWallName(string name)
+    {
+        if (name.StartsWith("Living")) return "Living";
+        return name.Replace("bedroom", "bed").Replace("Bedroom", "Bed");
     }
 
     void DrawCeiling(Rect area)
@@ -315,7 +448,7 @@ public class DesignMenu : MonoBehaviour
         return room.roomName.Replace("bedroom", "bed").Replace("Bedroom", "Bed");
     }
 
-    bool Available(Category c) => c == Category.Ceiling || c == Category.Lighting;
+    bool Available(Category c) => c != Category.Carpentry;
 
     void Fill(Rect r, Color c)
     {

@@ -89,6 +89,8 @@ public class LivingCeilingDesigner : MonoBehaviour
     public bool featureLightsOn = true; // pendants, chandeliers, fan light, batten
     public bool fanOn = true;
     public bool addGlow = true;        // bloom so LED strips glow (Play mode)
+    [Tooltip("Contemporary style: leave a gap along the window for curtains, lit from inside")]
+    public bool curtainPocket = true;
 
     public LightLevel low = new LightLevel
         { downlightSpacing = 2.4f, downlightIntensity = 1.3f, coveSpacing = 3.0f, coveIntensity = 0.12f, ledGlow = 1.5f, featureIntensity = 1.0f };
@@ -254,15 +256,14 @@ public class LivingCeilingDesigner : MonoBehaviour
     {
         var plaster = Mat("Plaster warm", C(0.94f, 0.92f, 0.88f), 0.15f);
         float w = Band(room, 0.5f), drop = 0.22f;
-        Tray(room, w, drop, plaster, Edge.All, true);
-        BandDownlights(room, w, H - drop, false, Edge.All);
+        TraysWithDining(room, dining, new Vector4(w, w, w, w), 0.4f, drop, plaster);
+        BandDownlights(room, w, H - drop, false, RoomEdges);
 
         var wood = Wood("Oak", C(0.78f, 0.62f, 0.45f));
         MaybeFan(room.Centre(H), 3, wood, Mat("Fan body oak", C(0.80f, 0.66f, 0.48f), 0.3f), 0.62f);
 
         if (!hasDining) return;
-        Tray(dining, 0.4f, drop, plaster, Edge.All & ~Edge.Top, true);
-        BandDownlights(dining, 0.4f, H - drop, false, Edge.Bottom);
+        BandDownlights(dining, 0.4f, H - drop, false, Edge.Bottom | Edge.Top);
         LinearPendant(dining.Centre(H), 1.4f, wood, 1.9f);
     }
 
@@ -284,12 +285,19 @@ public class LivingCeilingDesigner : MonoBehaviour
     {
         var plaster = Mat("Plaster white", C(0.96f, 0.96f, 0.96f), 0.1f);
         float drop = 0.15f, y = H - drop;
-        FlatPanel(room, drop, plaster);
+        // Along the window the false ceiling stops short, leaving a curtain pocket.
+        // Its LED sits up inside the pocket, so it lights the curtain without showing as a line.
+        float pocket = HasWindow && curtainPocket ? 0.15f : 0f;
+        FlatPanel(new Area(room.x0, room.z0, room.x1, room.z1 - pocket), drop, plaster);
+        if (pocket > 0f)
+        {
+            LedStrip(new Vector3(room.Centre(0).x, H - 0.04f, room.z1 - pocket + 0.02f), new Vector3(room.W, 0.02f, 0.015f));
+            if (ledOn)
+                foreach (float x in Even(room.x0, room.x1, Mathf.Max(1, Mathf.RoundToInt(room.W / L.coveSpacing))))
+                    AddLight(LightType.Spot, new Vector3(x, H - 0.05f, room.z1 - pocket / 2f), L.coveIntensity * 3f, 2.8f, 100f);
+        }
         var loop = room.Inset(Band(room, kind == RoomKind.LivingDining ? 0.45f : 0.4f));
         LedLoop(loop, y - 0.002f);
-        // Curtain cove along the window
-        if (HasWindow)
-            LedStrip(new Vector3(room.Centre(0).x, y - 0.004f, room.z1 - 0.2f), new Vector3(room.W, 0.01f, 0.02f));
         GridDownlights(loop, y, true, HasFan);
 
         var black = Mat("Fan black", C(0.12f, 0.12f, 0.13f), 0.5f);
@@ -308,38 +316,51 @@ public class LivingCeilingDesigner : MonoBehaviour
         var plaster = Mat("Plaster sand", C(0.91f, 0.87f, 0.80f), 0.15f);
         var timber = Wood("Teak", C(0.40f, 0.27f, 0.17f));
         float w = Band(room, kind == RoomKind.LivingDining ? 0.55f : 0.5f), drop = 0.25f;
-        Tray(room, w, drop, plaster, Edge.All, true);
-        TimberPanel(room.Inset(w + 0.08f), timber);
-        BandDownlights(room, w, H - drop, false, Edge.All);
+        var recess = TraysWithDining(room, dining, new Vector4(w, w, w, w), 0.45f, drop, plaster);
+        TimberPanel(new Area(recess.x0 + 0.08f, recess.z0 + 0.08f, recess.x1 - 0.08f, recess.z1 - 0.08f), timber);
+        BandDownlights(room, w, H - drop, false, RoomEdges);
         MaybeFan(room.Centre(H), 5, timber, Mat("Fan bronze", C(0.30f, 0.22f, 0.15f), 0.4f), 0.58f);
 
         if (!hasDining) return;
-        Tray(dining, 0.45f, drop, plaster, Edge.All & ~Edge.Top, true);
-        TimberPanel(new Area(dining.x0 + 0.53f, dining.z0 + 0.53f, dining.x1 - 0.53f, dining.z1), timber);
-        BandDownlights(dining, 0.45f, H - drop, false, Edge.Bottom);
+        TimberPanel(dining.Inset(0.53f), timber);
+        BandDownlights(dining, 0.45f, H - drop, false, Edge.Bottom | Edge.Top);
         RattanPendant(dining.Centre(H), 1.85f);
     }
 
+    // Two-step tray, kept shallow so it clears the window head (2.3 m in the living room).
+    // On window sides the box-up is a slim curtain pelmet instead of a full-width band,
+    // so the window stays fully visible.
     void BuildLuxury(Area room, Area dining)
     {
         var plaster = Mat("Plaster ivory", C(0.95f, 0.93f, 0.90f), 0.25f);
         var gold = Mat("Gold", C(0.80f, 0.64f, 0.30f), 0.75f, 1f);
         bool bed = kind != RoomKind.LivingDining;
-        float outer = Band(room, bed ? 0.4f : 0.45f);
+        bool frontWindow = HasWindow;
+        bool sideWindow = kind == RoomKind.Bedroom && roomName.StartsWith("Main");   // main bedroom side window
+        float outer = Band(room, bed ? 0.4f : 0.45f), slim = Mathf.Min(outer, 0.2f);
+        float drop = 0.18f, innerDrop = 0.08f;
 
-        Tray(room, outer, 0.30f, plaster, Edge.All, true);                 // outer step
-        var inner = room.Inset(outer);
-        float step = Band(inner, bed ? 0.2f : 0.25f);
-        Tray(inner, step, 0.14f, plaster, Edge.All, true);                 // inner step
-        GoldTrim(inner, H - 0.30f, gold);
-        GoldTrim(inner.Inset(step), H - 0.14f, gold);
-        BandDownlights(room, outer, H - 0.30f, false, Edge.All);
+        // Outer step
+        var widths = new Vector4(outer, frontWindow ? slim : outer, outer, sideWindow ? slim : outer);
+        var inner = TraysWithDining(room, dining, widths, 0.4f, drop, plaster);
+
+        // Inner step, higher up, centred in what is left
+        float step = Band(inner, bed ? 0.18f : 0.22f);
+        Tray4(inner, new Vector4(step, step, step, step), innerDrop, plaster, true);
+        GoldTrim(inner, H - drop, gold);
+        GoldTrim(inner.Inset(step), H - innerDrop, gold);
+
+        // Downlights only in the wide bands, not over the windows
+        Edge lit = RoomEdges;
+        if (frontWindow) lit &= ~Edge.Top;
+        if (sideWindow) lit &= ~Edge.Right;
+        BandDownlights(room, outer, H - drop, false, lit);
+
         if (HasFan) Chandelier(room.Centre(H), gold, bed ? 0.32f : 0.45f, bed ? 2.05f : 1.95f);
 
         if (!hasDining) return;
-        Tray(dining, 0.4f, 0.30f, plaster, Edge.All & ~Edge.Top, true);
-        GoldTrim(new Area(dining.x0 + 0.4f, dining.z0 + 0.4f, dining.x1 - 0.4f, dining.z1), H - 0.30f, gold);
-        BandDownlights(dining, 0.4f, H - 0.30f, false, Edge.Bottom);
+        GoldTrim(dining.Inset(0.4f), H - drop, gold);
+        BandDownlights(dining, 0.4f, H - drop, false, Edge.Bottom | Edge.Top);
         Chandelier(dining.Centre(H), gold, 0.32f, 1.95f);
     }
 
@@ -383,22 +404,50 @@ public class LivingCeilingDesigner : MonoBehaviour
     // on the inner face that washes light onto the recessed ceiling.
     void Tray(Area a, float w, float drop, Material body, Edge edges, bool cove)
     {
-        float yTop = H, yBot = H - drop, yMid = (yTop + yBot) / 2f;
-        bool b = (edges & Edge.Bottom) != 0, t = (edges & Edge.Top) != 0;
-        bool l = (edges & Edge.Left) != 0, r = (edges & Edge.Right) != 0;
-        float zs = a.z0 + (b ? w : 0f), ze = a.z1 - (t ? w : 0f);
+        Tray4(a, new Vector4((edges & Edge.Bottom) != 0 ? w : 0f, (edges & Edge.Top) != 0 ? w : 0f,
+                             (edges & Edge.Left) != 0 ? w : 0f, (edges & Edge.Right) != 0 ? w : 0f), drop, body, cove);
+    }
 
-        if (b) Box("Box-up", new Vector3(a.Centre(0).x, yMid, a.z0 + w / 2f), new Vector3(a.W, drop, w), body);
-        if (t) Box("Box-up", new Vector3(a.Centre(0).x, yMid, a.z1 - w / 2f), new Vector3(a.W, drop, w), body);
-        if (l) Box("Box-up", new Vector3(a.x0 + w / 2f, yMid, (zs + ze) / 2f), new Vector3(w, drop, ze - zs), body);
-        if (r) Box("Box-up", new Vector3(a.x1 - w / 2f, yMid, (zs + ze) / 2f), new Vector3(w, drop, ze - zs), body);
+    // In the living room, the dining area is its own closed tray. The living tray leaves out
+    // its band on the dining side, because the dining tray's band already closes it off
+    // (both are at the same depth). A second cove on that shared band lights the living recess.
+    // Returns the living recess.
+    Area TraysWithDining(Area room, Area dining, Vector4 widths, float diningBand, float drop, Material body)
+    {
+        if (!hasDining) return Tray4(room, widths, drop, body, true);
 
-        if (!cove) return;
-        float xs = a.x0 + (l ? w : 0f), xe = a.x1 - (r ? w : 0f);
-        if (b) CoveEdge(new Vector3((xs + xe) / 2f, 0, a.z0 + w + 0.01f), xe - xs, true, +1, drop);
-        if (t) CoveEdge(new Vector3((xs + xe) / 2f, 0, a.z1 - w - 0.01f), xe - xs, true, -1, drop);
-        if (l) CoveEdge(new Vector3(a.x0 + w + 0.01f, 0, (zs + ze) / 2f), ze - zs, false, +1, drop);
-        if (r) CoveEdge(new Vector3(a.x1 - w - 0.01f, 0, (zs + ze) / 2f), ze - zs, false, -1, drop);
+        widths.x = 0f;   // no living band on the dining side
+        var recess = Tray4(room, widths, drop, body, true);
+        Tray4(dining, new Vector4(diningBand, diningBand, diningBand, diningBand), drop, body, true);
+        CoveEdge(new Vector3((recess.x0 + recess.x1) / 2f, 0, room.z0 + 0.01f), recess.W, true, +1, drop);
+        return recess;
+    }
+
+    // The living tray's sides that have their own band (the dining side is shared)
+    Edge RoomEdges => hasDining ? Edge.All & ~Edge.Bottom : Edge.All;
+
+    // Box-up with its own width on each side: x = bottom, y = top, z = left, w = right.
+    // A width of 0 leaves that side open. Returns the open area in the middle.
+    Area Tray4(Area a, Vector4 wd, float drop, Material body, bool cove)
+    {
+        float yMid = H - drop / 2f;
+        float wb = wd.x, wt = wd.y, wl = wd.z, wr = wd.w;
+        float zs = a.z0 + wb, ze = a.z1 - wt;
+
+        if (wb > 0f) Box("Box-up", new Vector3(a.Centre(0).x, yMid, a.z0 + wb / 2f), new Vector3(a.W, drop, wb), body);
+        if (wt > 0f) Box("Box-up", new Vector3(a.Centre(0).x, yMid, a.z1 - wt / 2f), new Vector3(a.W, drop, wt), body);
+        if (wl > 0f) Box("Box-up", new Vector3(a.x0 + wl / 2f, yMid, (zs + ze) / 2f), new Vector3(wl, drop, ze - zs), body);
+        if (wr > 0f) Box("Box-up", new Vector3(a.x1 - wr / 2f, yMid, (zs + ze) / 2f), new Vector3(wr, drop, ze - zs), body);
+
+        float xs = a.x0 + wl, xe = a.x1 - wr;
+        if (cove)
+        {
+            if (wb > 0f) CoveEdge(new Vector3((xs + xe) / 2f, 0, zs + 0.01f), xe - xs, true, +1, drop);
+            if (wt > 0f) CoveEdge(new Vector3((xs + xe) / 2f, 0, ze - 0.01f), xe - xs, true, -1, drop);
+            if (wl > 0f) CoveEdge(new Vector3(xs + 0.01f, 0, (zs + ze) / 2f), ze - zs, false, +1, drop);
+            if (wr > 0f) CoveEdge(new Vector3(xe - 0.01f, 0, (zs + ze) / 2f), ze - zs, false, -1, drop);
+        }
+        return new Area(xs, zs, xe, ze);
     }
 
     // The glowing strip along the inner edge, plus soft lights set well below the

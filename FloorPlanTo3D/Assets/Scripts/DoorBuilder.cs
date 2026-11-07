@@ -33,7 +33,11 @@ public class DoorBuilder : MonoBehaviour
     public float frameWidth = 0.05f;
     public float leafThickness = 0.04f;
 
-    public DoorData[] doors =
+    public DoorData[] doors = DefaultDoors();
+
+    // The built-in list. Unity keeps the list saved in your scene, so after a script
+    // update use "Reset Doors To Defaults" from the component's menu to pick up new values.
+    static DoorData[] DefaultDoors() => new DoorData[]
     {
         new DoorData { name = "Main entrance door", type = DoorType.Main,
             start = new Vector2(1.67f, 1.975f), end = new Vector2(2.80f, 1.975f),
@@ -60,6 +64,18 @@ public class DoorBuilder : MonoBehaviour
             start = new Vector2(7.85f, 1.655f), end = new Vector2(7.85f, 0.705f),
             hingeAtStart = true, opensTowards = new Vector2(1, 0), wallThickness = 0.1f },
     };
+
+    [ContextMenu("Reset Doors To Defaults")]
+    void ResetToDefaults()
+    {
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(this, "Reset Doors To Defaults");
+#endif
+        doors = DefaultDoors();
+        // Rebuild the whole house so wall openings, paint and ceilings all match
+        var plan = GetComponent<FloorPlanBuilder>();
+        if (plan != null) plan.Build(); else Build();
+    }
 
     void Start()
     {
