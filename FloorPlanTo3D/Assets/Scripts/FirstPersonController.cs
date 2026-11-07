@@ -24,6 +24,9 @@ public class FirstPersonController : MonoBehaviour
     [Tooltip("Keep this smaller than the Character Controller radius to stop the camera seeing through walls.")]
     public float nearClip = 0.05f;
 
+    // Set by the design menu while it is open, so clicks and the mouse go to the menu
+    public static bool InputBlocked;
+
     CharacterController controller;
     float pitch;
     float verticalVelocity;
@@ -37,7 +40,7 @@ public class FirstPersonController : MonoBehaviour
             if (cam != null) cameraTransform = cam.transform;
         }
         ApplyCameraSettings();
-        LockCursor(true);
+        if (!InputBlocked) LockCursor(true);
     }
 
     void Update()
@@ -45,11 +48,14 @@ public class FirstPersonController : MonoBehaviour
         ReadInput(out Vector2 move, out Vector2 look, out bool run, out bool jump,
                   out bool escape, out bool click);
 
-        if (escape) LockCursor(false);
-        if (click && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
+        if (!InputBlocked)
+        {
+            if (escape) LockCursor(false);
+            if (click && Cursor.lockState != CursorLockMode.Locked) LockCursor(true);
+        }
 
         // Look around only while the cursor is locked
-        if (Cursor.lockState == CursorLockMode.Locked)
+        if (!InputBlocked && Cursor.lockState == CursorLockMode.Locked)
         {
             transform.Rotate(0f, look.x * mouseSensitivity, 0f);
             pitch = Mathf.Clamp(pitch - look.y * mouseSensitivity, -maxLookAngle, maxLookAngle);
@@ -123,7 +129,7 @@ public class FirstPersonController : MonoBehaviour
         if (Application.isPlaying) ApplyCameraSettings();
     }
 
-    void LockCursor(bool locked)
+    public static void LockCursor(bool locked)
     {
         Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
         Cursor.visible = !locked;
