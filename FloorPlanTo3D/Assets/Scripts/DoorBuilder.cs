@@ -57,7 +57,7 @@ public class DoorBuilder : MonoBehaviour
             start = new Vector2(11.0f, 4.59f), end = new Vector2(11.7f, 4.59f),
             hingeAtStart = false, opensTowards = new Vector2(0, -1), wallThickness = 0.1f },
         new DoorData { name = "Service yard door", type = DoorType.ServiceYard,
-            start = new Vector2(7.85f, 1.655f), end = new Vector2(7.85f, 0.705f),
+            start = new Vector2(7.85f, 1.605f), end = new Vector2(7.85f, 0.975f),
             hingeAtStart = true, opensTowards = new Vector2(1, 0), wallThickness = 0.1f },
     };
 
@@ -166,7 +166,7 @@ public class DoorBuilder : MonoBehaviour
             case DoorType.Room: return 0.9f;
             case DoorType.Bathroom: return 0.75f;
             case DoorType.Shelter: return 0.85f;
-            default: return 0.85f;   // service yard
+            default: return 0.8f;
         }
     }
 

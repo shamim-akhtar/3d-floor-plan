@@ -5,29 +5,29 @@ using UnityEngine;
 // +X runs left to right on the plan, +Z runs from the kitchen side up to the bedrooms.
 public class FloorPlanBuilder : MonoBehaviour
 {
-    public float wallHeight = 2.6f;
-    public float windowSillHeight = 0.9f;   // windows are built as a low wall plus a header
-    public float windowHeadHeight = 2.1f;
-    public float parapetHeight = 1.0f;
-    public Material wallMaterial;
-    public Material beamMaterial;
+  public float wallHeight = 2.6f;
+  public float windowSillHeight = 0.9f;   // windows are built as a low wall plus a header
+  public float windowHeadHeight = 2.1f;
+  public float parapetHeight = 1.0f;
+  public Material wallMaterial;
+  public Material beamMaterial;
 
-    [Header("Ceiling")]
-    public bool buildCeiling = true;
-    public Material ceilingMaterial;
-    // Outer edges of the house in metres (covers all walls and beams)
-    public float ceilingMinX = -0.67f, ceilingMaxX = 14.775f;
-    public float ceilingMinZ = 0f, ceilingMaxZ = 9.575f;
+  [Header("Ceiling")]
+  public bool buildCeiling = true;
+  public Material ceilingMaterial;
+  // Outer edges of the house in metres (covers all walls and beams)
+  public float ceilingMinX = -0.67f, ceilingMaxX = 14.775f;
+  public float ceilingMinZ = 0f, ceilingMaxZ = 9.575f;
 
-    struct W
-    {
-        public string id, name, type; public float cx, cz, len, thick, rotY;
-        public W(string i, string n, float x, float z, float l, float t, float r, string ty)
-        { id = i; name = n; cx = x; cz = z; len = l; thick = t; rotY = r; type = ty; }
-    }
+  struct W
+  {
+    public string id, name, type; public float cx, cz, len, thick, rotY;
+    public W(string i, string n, float x, float z, float l, float t, float r, string ty)
+    { id = i; name = n; cx = x; cz = z; len = l; thick = t; rotY = r; type = ty; }
+  }
 
-    static readonly W[] walls =
-    {
+  static readonly W[] walls =
+  {
         new W("T1", "Top facade beam (study)", 0.05f, 9.425f, 1.14f, 0.3f, 0f, "beam"),
         new W("T2", "Top facade window (study/living)", 2.92f, 9.325f, 4.6f, 0.1f, 0f, "window"),
         new W("T3", "Top facade beam (bedroom 3)", 5.85f, 9.425f, 1.26f, 0.3f, 0f, "beam"),
@@ -68,82 +68,84 @@ public class FloorPlanBuilder : MonoBehaviour
         new W("MB1", "Main bedroom bottom wall", 13.598f, 4.59f, 1.755f, 0.1f, 0f, "wall"),
     };
 
-    // Builds anything missing when you press Play
-    void Start()
+  // Builds anything missing when you press Play
+  void Start()
+  {
+    if (transform.Find("Walls") == null) Build();
+    else if (buildCeiling && transform.Find("Ceiling") == null) MakeCeiling();
+  }
+
+  // Rebuilds the walls and ceiling, then the windows and doors if those
+  // components are on the same GameObject.
+  [ContextMenu("Build Walls")]
+  public void Build()
+  {
+    // Remove everything previously built (including old loose walls)
+    for (int i = transform.childCount - 1; i >= 0; i--)
+      DestroyImmediate(transform.GetChild(i).gameObject);
+
+    var wallRoot = new GameObject("Walls").transform;
+    wallRoot.SetParent(transform, false);
+
+    var windows = GetComponent<WindowBuilder>();
+
+    foreach (var w in walls)
     {
-        if (transform.Find("Walls") == null) Build();
-        else if (buildCeiling && transform.Find("Ceiling") == null) MakeCeiling();
+      if (w.type == "window")
+      {
+        float sill = windowSillHeight, head = windowHeadHeight;
+        if (windows != null) windows.GetOpeningHeights(w.id, ref sill, ref head);
+        if (sill > 0.001f) MakeBlock(wallRoot, w, 0f, sill, " (sill)");
+        if (head < wallHeight - 0.001f) MakeBlock(wallRoot, w, head, wallHeight, " (header)");
+      }
+      else if (w.type == "parapet")
+        MakeBlock(wallRoot, w, 0f, parapetHeight, "");
+      else
+        MakeBlock(wallRoot, w, 0f, wallHeight, "");
     }
 
-    // Rebuilds the walls and ceiling, then the windows and doors if those
-    // components are on the same GameObject.
-    [ContextMenu("Build Walls")]
-    public void Build()
-    {
-        // Remove everything previously built (including old loose walls)
-        for (int i = transform.childCount - 1; i >= 0; i--)
-            DestroyImmediate(transform.GetChild(i).gameObject);
+    if (buildCeiling) MakeCeiling();
 
-        var wallRoot = new GameObject("Walls").transform;
-        wallRoot.SetParent(transform, false);
+    var floors = GetComponent<FloorBuilder>();
+    if (floors != null) floors.Build();
+    if (windows != null) windows.Build();
+    var doors = GetComponent<DoorBuilder>();
+    if (doors != null) doors.Build();
+  }
 
-        var windows = GetComponent<WindowBuilder>();
+  // The ceiling is a one-sided plane facing down. Unity does not draw the back
+  // of a plane, so it is invisible from above (Scene view looking down) but
+  // visible from inside the house looking up (Play mode).
+  void MakeCeiling()
+  {
+    var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+    go.name = "Ceiling";
+    go.transform.SetParent(transform, false);
 
-        foreach (var w in walls)
-        {
-            if (w.type == "window")
-            {
-                float sill = windowSillHeight, head = windowHeadHeight;
-                if (windows != null) windows.GetOpeningHeights(w.id, ref sill, ref head);
-                if (sill > 0.001f) MakeBlock(wallRoot, w, 0f, sill, " (sill)");
-                if (head < wallHeight - 0.001f) MakeBlock(wallRoot, w, head, wallHeight, " (header)");
-            }
-            else if (w.type == "parapet")
-                MakeBlock(wallRoot, w, 0f, parapetHeight, "");
-            else
-                MakeBlock(wallRoot, w, 0f, wallHeight, "");
-        }
+    float sizeX = ceilingMaxX - ceilingMinX;
+    float sizeZ = ceilingMaxZ - ceilingMinZ;
+    go.transform.localPosition = new Vector3(
+        (ceilingMinX + ceilingMaxX) / 2f, wallHeight, (ceilingMinZ + ceilingMaxZ) / 2f);
+    go.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);   // face downwards
+    go.transform.localScale = new Vector3(sizeX / 10f, 1f, sizeZ / 10f); // Plane is 10 x 10 m
 
-        if (buildCeiling) MakeCeiling();
+    var rend = go.GetComponent<Renderer>();
+    // No shadows, so the ceiling does not darken the inside of the house
+    rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    var mat = ceilingMaterial != null ? ceilingMaterial : wallMaterial;
+    if (mat != null) rend.sharedMaterial = mat;
+  }
 
-        if (windows != null) windows.Build();
-        var doors = GetComponent<DoorBuilder>();
-        if (doors != null) doors.Build();
-    }
-
-    // The ceiling is a one-sided plane facing down. Unity does not draw the back
-    // of a plane, so it is invisible from above (Scene view looking down) but
-    // visible from inside the house looking up (Play mode).
-    void MakeCeiling()
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        go.name = "Ceiling";
-        go.transform.SetParent(transform, false);
-
-        float sizeX = ceilingMaxX - ceilingMinX;
-        float sizeZ = ceilingMaxZ - ceilingMinZ;
-        go.transform.localPosition = new Vector3(
-            (ceilingMinX + ceilingMaxX) / 2f, wallHeight, (ceilingMinZ + ceilingMaxZ) / 2f);
-        go.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);   // face downwards
-        go.transform.localScale = new Vector3(sizeX / 10f, 1f, sizeZ / 10f); // Plane is 10 x 10 m
-
-        var rend = go.GetComponent<Renderer>();
-        // No shadows, so the ceiling does not darken the inside of the house
-        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        var mat = ceilingMaterial != null ? ceilingMaterial : wallMaterial;
-        if (mat != null) rend.sharedMaterial = mat;
-    }
-
-    void MakeBlock(Transform parent, W w, float bottom, float top, string suffix)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = w.id + " " + w.name + suffix;
-        go.transform.SetParent(parent, false);
-        float h = top - bottom;
-        go.transform.localPosition = new Vector3(w.cx, bottom + h / 2f, w.cz);
-        go.transform.localRotation = Quaternion.Euler(0f, w.rotY, 0f);
-        go.transform.localScale = new Vector3(w.len, h, w.thick);
-        var mat = w.type == "beam" ? beamMaterial : wallMaterial;
-        if (mat != null) go.GetComponent<Renderer>().sharedMaterial = mat;
-    }
+  void MakeBlock(Transform parent, W w, float bottom, float top, string suffix)
+  {
+    var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+    go.name = w.id + " " + w.name + suffix;
+    go.transform.SetParent(parent, false);
+    float h = top - bottom;
+    go.transform.localPosition = new Vector3(w.cx, bottom + h / 2f, w.cz);
+    go.transform.localRotation = Quaternion.Euler(0f, w.rotY, 0f);
+    go.transform.localScale = new Vector3(w.len, h, w.thick);
+    var mat = w.type == "beam" ? beamMaterial : wallMaterial;
+    if (mat != null) go.GetComponent<Renderer>().sharedMaterial = mat;
+  }
 }
